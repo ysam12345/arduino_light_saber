@@ -6,6 +6,7 @@
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
     #include "Wire.h"
 #endif
+#include "Timer.h"
 
 #define LED_0 3
 #define LED_1 5
@@ -106,7 +107,8 @@ void setup() {
   //init DFPlayer 
   mySoftwareSerial.begin(9600);
   myDFPlayer.begin(mySoftwareSerial);
-  myDFPlayer.volume(5);  //Set volume value. From 0 to 30
+  myDFPlayer.EQ(DFPLAYER_EQ_BASS);
+  myDFPlayer.volume(20);  //Set volume value. From 0 to 30
 
   //init interrupt pin
   //pinMode(INTTRRUPT_PIN, INPUT_PULLUP);
@@ -123,26 +125,20 @@ void loop() {
     
     if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
       mpu.resetFIFO();
+      Serial.println("FIFO overflow!");
     } else if (mpuIntStatus & 0x02) {
       while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
       mpu.getFIFOBytes(fifoBuffer, packetSize);
       fifoCount -= packetSize;
-      Serial.print(fifoCount);
+      Serial.println(fifoCount);
   
       mpu.dmpGetQuaternion(&q, fifoBuffer);
       mpu.dmpGetGravity(&gravity, &q);
       mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-    
     } else {
-      Serial.print("dmp is not Ready");
+      Serial.println("dmp is not Ready");
     }
   
-
-  Serial.print(ypr[2], 6);
-  Serial.print(" ");
-  Serial.print(-1 * ypr[1], 6);
-  Serial.print(" ");
-  Serial.println(ypr[0], 6);
   
   
   switch(state){
@@ -152,6 +148,7 @@ void loop() {
       break;
     case STATE_TURNED_ON:
     Serial.println("STATE_TURNED_ON");
+      myDFPlayer.loop(3); 
       breath_light();
       break;
     case STATE_TURNING_OFF:
@@ -177,51 +174,48 @@ void change_state() {
 }
 
 void set_light() {
-  analogWrite(LED_0, led_light[0]);
-  analogWrite(LED_1, led_light[1]);
-  analogWrite(LED_2, led_light[2]);
-  analogWrite(LED_3, led_light[3]);
-  analogWrite(LED_4, led_light[4]);
-  analogWrite(LED_5, led_light[5]);
   if(led_light[0]==255){
+    digitalWrite(LED_0, HIGH);
     pinMode(LED_0, INPUT);
   }else{
+    analogWrite(LED_0, led_light[0]);
     pinMode(LED_0, OUTPUT);
   }
   if(led_light[1]==255){
+    digitalWrite(LED_1, HIGH);
     pinMode(LED_1, INPUT);
   }else{
+    analogWrite(LED_1, led_light[1]);
     pinMode(LED_1, OUTPUT);
   }
   if(led_light[2]==255){
+    digitalWrite(LED_2, HIGH);
     pinMode(LED_2, INPUT);
   }else{
+    analogWrite(LED_2, led_light[2]);
     pinMode(LED_2, OUTPUT);
   }
    if(led_light[3]==255){
+    digitalWrite(LED_3, HIGH);
     pinMode(LED_3, INPUT);
   }else{
+    analogWrite(LED_3, led_light[3]);
     pinMode(LED_3, OUTPUT);
   }
   if(led_light[4]==255){
+    digitalWrite(LED_4, HIGH);
     pinMode(LED_4, INPUT);
   }else{
+    analogWrite(LED_4, led_light[4]);
     pinMode(LED_4, OUTPUT);
   }
   if(led_light[5]==255){
+    digitalWrite(LED_5, HIGH);
     pinMode(LED_5, INPUT);
   }else{
+    analogWrite(LED_5, led_light[5]);
     pinMode(LED_5, OUTPUT);
   }
-}
-
-void set_light_digital() {
-  digitalWrite(LED_0, led_light[0]);
-  digitalWrite(LED_1, led_light[1]);
-  digitalWrite(LED_2, led_light[2]);
-  digitalWrite(LED_3, led_light[3]);
-  digitalWrite(LED_4, led_light[4]);
-  digitalWrite(LED_5, led_light[5]); 
 }
 
 void breath_light() {
@@ -238,9 +232,6 @@ void breath_light() {
     led_light[5] += fade_amount;
     if(led_light[0]==0 || led_light[0]>=150){
       fade_amount = -fade_amount;
-      if(led_light[0]==0){
-        myDFPlayer.play(3); 
-      }
     }
     set_light();
     delay(50);
@@ -251,8 +242,7 @@ void smooth_turn_on_the_light() {
   myDFPlayer.play(1); 
   light_off();
   while( led_light[0]>0 ||led_light[1]>0 ||led_light[2]>0 ||led_light[3]>0 ||led_light[4]>0 ||led_light[5]>0 ){
-    led_light[0] = increase_light_value(led_light[0]);
-     if(led_light[4]<255){
+    if(led_light[4]<255){
       led_light[5] = increase_light_value(led_light[5]);
     }
     if(led_light[3]<255){
@@ -267,6 +257,7 @@ void smooth_turn_on_the_light() {
     if(led_light[0]<255){
       led_light[1] = increase_light_value(led_light[1]);
     }
+    led_light[0] = increase_light_value(led_light[0]);
     set_light();
     delay(50);
   }
@@ -344,7 +335,7 @@ void light_off_digital() {
   for(int i = 0 ; i < 6 ; i++ ){
     led_light[i] = HIGH;
   }
-  set_light_digital();
+  set_light();
   led_to_input();
 }
 
@@ -352,6 +343,7 @@ void light_off() {
   for(int i = 0 ; i < 6 ; i++ ){
     led_light[i] = 255;
   }
+  set_light();
 }
 
 void light_on() {
@@ -359,7 +351,6 @@ void light_on() {
     led_light[i] = 0;
   }
   set_light();
-  
 }
 
 void turn_off_the_light() {
