@@ -31,7 +31,7 @@ DFRobotDFPlayerMini myDFPlayer;
 
 //MPU 6050
 MPU6050 mpu;
-volatile bool mpuInterrupt = false;
+
 // MPU control/status vars
 bool dmpReady = false;  // set true if DMP init was successful
 uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
@@ -60,6 +60,7 @@ volatile int state = STATE_TURNED_OFF;
 long debouncing_time = 100; //Debouncing Time in Milliseconds
 volatile unsigned long last_micros;
 
+volatile bool mpuInterrupt = true;
 void dmpDataReady() {
   mpuInterrupt = true;
   //detachInterrupt(0);
@@ -82,11 +83,14 @@ void setup() {
   // initialize device
   Serial.println(F("Initializing I2C devices..."));
   mpu.initialize();
-  devStatus = mpu.dmpInitialize();
   
   // verify connection
   Serial.println(F("Testing device connections..."));
   Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
+
+  // 載入與設定 DMP
+  Serial.println("Initializing DMP...\n");
+  devStatus = mpu.dmpInitialize();
 
   // supply your own gyro offsets here, scaled for min sensitivity
   mpu.setXGyroOffset(220);
@@ -122,23 +126,32 @@ void loop() {
   
   // put your main code here, to run repeatedl
     mpuIntStatus = mpu.getIntStatus();
-    
-    if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
+    fifoCount = mpu.getFIFOCount();
+    if (fifoCount == 1024) {
       mpu.resetFIFO();
       Serial.println("FIFO overflow!");
-    } else if (mpuIntStatus & 0x02) {
-      while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+    } else if (fifoCount >= packetSize) {
       mpu.getFIFOBytes(fifoBuffer, packetSize);
-      fifoCount -= packetSize;
+      Serial.println("getFIFOBytes");
       Serial.println(fifoCount);
-  
+      Serial.println(packetSize);
+      //fifoCount -= packetSize;
+      
+
+      // 實際的加速度（去除重力）
+      mpu.dmpGetQuaternion(&q, fifoBuffer);
+      mpu.dmpGetAccel(&aa, fifoBuffer);
+      mpu.dmpGetGravity(&gravity, &q);
+      mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
+      printf("areal %6d %6d %6d    ", aaReal.x, aaReal.y, aaReal.z);
+
+      /*
       mpu.dmpGetQuaternion(&q, fifoBuffer);
       mpu.dmpGetGravity(&gravity, &q);
-      mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+      mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);*/
     } else {
       Serial.println("dmp is not Ready");
     }
-  
   
   
   switch(state){
@@ -148,7 +161,6 @@ void loop() {
       break;
     case STATE_TURNED_ON:
     Serial.println("STATE_TURNED_ON");
-      myDFPlayer.loop(3); 
       breath_light();
       break;
     case STATE_TURNING_OFF:
@@ -157,10 +169,9 @@ void loop() {
       break;
     case STATE_TURNED_OFF:
       Serial.println("STATE_TURNED_OFF");
-      light_off_digital();
+      light_off();
       break;
   }
-  
   
 }
 
@@ -223,6 +234,9 @@ void breath_light() {
   for(int i = 0 ; i < 6 ; i++ ){
     led_light[i] = 0;
   }
+  Serial.println(myDFPlayer.readState());
+  while(myDFPlayer.readState() == 513);
+  myDFPlayer.loop(3);
   while( state == STATE_TURNED_ON ){
     led_light[0] += fade_amount;
     led_light[1] += fade_amount;
@@ -291,7 +305,7 @@ void smooth_turn_off_the_light() {
   }
   if(state == STATE_TURNING_OFF){
     state = STATE_TURNED_OFF;
-    light_off_digital();
+    light_off();
   }
 }
 int increase_light_value(int value) {
@@ -303,6 +317,7 @@ int increase_light_value(int value) {
     return value - 50;
   }
 }
+
 int decrease_light_value(int value) {
   if(value == 255 ){
     return 255;
@@ -313,31 +328,6 @@ int decrease_light_value(int value) {
   }
 }
 
-void led_to_output() {
-  pinMode(LED_0, OUTPUT);
-  pinMode(LED_1, OUTPUT);
-  pinMode(LED_2, OUTPUT);
-  pinMode(LED_3, OUTPUT);
-  pinMode(LED_4, OUTPUT);
-  pinMode(LED_5, OUTPUT);
-}
-
-void led_to_input() {
-  pinMode(LED_0, INPUT);
-  pinMode(LED_1, INPUT);
-  pinMode(LED_2, INPUT);
-  pinMode(LED_3, INPUT);
-  pinMode(LED_4, INPUT);
-  pinMode(LED_5, INPUT);
-}
-
-void light_off_digital() {
-  for(int i = 0 ; i < 6 ; i++ ){
-    led_light[i] = HIGH;
-  }
-  set_light();
-  led_to_input();
-}
 
 void light_off() {
   for(int i = 0 ; i < 6 ; i++ ){
@@ -351,47 +341,4 @@ void light_on() {
     led_light[i] = 0;
   }
   set_light();
-}
-
-void turn_off_the_light() {
-  myDFPlayer.play(2); 
-  delay (100);
-  pinMode(LED_5, INPUT);
-  delay (50);
-  pinMode(LED_4, INPUT);
-  delay (50);
-  pinMode(LED_3, INPUT);
-  delay (50);
-  pinMode(LED_2, INPUT);
-  delay (50);
-  pinMode(LED_1, INPUT);
-  delay (50);
-  pinMode(LED_0, INPUT);
-  if(state == STATE_TURNING_OFF){
-    state = STATE_TURNED_OFF;
-  }
-}
-
-void turn_on_the_light() {
-  myDFPlayer.play(1);
-  pinMode(LED_0, OUTPUT);
-  analogWrite(LED_0, 0);
-  delay (50);
-  pinMode(LED_1, OUTPUT);
-  analogWrite(LED_1, 0);
-  delay (50);
-  pinMode(LED_2, OUTPUT);
-  analogWrite(LED_2, 0);
-  delay (50);
-  pinMode(LED_3, OUTPUT);
-  analogWrite(LED_3, 0);
-  delay (50);
-  pinMode(LED_4, OUTPUT);
-  analogWrite(LED_4, 0);
-  delay (50);
-  pinMode(LED_5, OUTPUT);
-  analogWrite(LED_5, 0);
-  if(state == STATE_TURNING_ON){
-    state = STATE_TURNED_ON;
-  }
 }
